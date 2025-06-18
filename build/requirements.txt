@@ -1,4 +1,5 @@
 pdfplumber
 openai
 flask
+flask-cors
 tiktoken

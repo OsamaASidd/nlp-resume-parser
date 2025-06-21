@@ -3,3 +3,4 @@
 application/uploads
 application/logs
 .env
+/venv

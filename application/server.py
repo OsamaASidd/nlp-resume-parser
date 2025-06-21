@@ -6,6 +6,10 @@ from werkzeug.utils import secure_filename
 from env_parser import parse_env_file
 from parser import OptimizedResumeParser
 import argparse
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 UPLOAD_FOLDER = './uploads'
 ALLOWED_EXTENSIONS = {'pdf'}

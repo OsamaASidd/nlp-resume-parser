@@ -13,19 +13,58 @@ class OptimizedResumeParser():
         # Set GPT API key
         openai.api_key = OPENAI_API_KEY
 
-        # Optimized, more concise prompt
+        # Updated prompt with new JSON structure
         self.prompt_questions = \
-"""Extract resume data as JSON:
+"""Extract resume data as JSON with this exact structure:
 {
-  "basic_info": {
-    "first_name": "", "last_name": "", "full_name": "", "email": "", 
-    "phone_number": "", "location": "", "portfolio_website_url": "", 
-    "linkedin_url": "", "github_main_page_url": "", "university": "", 
-    "education_level": "", "graduation_year": "", "graduation_month": "", 
-    "majors": [], "GPA": ""
-  },
-  "work_experience": [{"job_title": "", "company": "", "location": "", "duration": "", "job_summary": ""}],
-  "project_experience": [{"project_name": "", "project_description": ""}]
+  "firstname": "",
+  "lastname": "",
+  "email": "",
+  "contactno": "",
+  "country": "",
+  "city": "",
+  "certificates": [
+    {
+      "credentialId": "",
+      "credentialUrl": "",
+      "description": "",
+      "expirationDate": "",
+      "issuedOn": "",
+      "issuer": "",
+      "name": ""
+    }
+  ],
+  "education": [
+    {
+      "city": "",
+      "degree": "",
+      "description": "",
+      "endDate": "",
+      "field": "",
+      "school": "",
+      "startDate": ""
+    }
+  ],
+  "extracurriculars": [
+    {
+      "activityName": "",
+      "description": "",
+      "endDate": "",
+      "organization": "",
+      "role": "",
+      "startDate": ""
+    }
+  ],
+  "jobs": [
+    {
+      "city": "",
+      "description": "",
+      "employer": "",
+      "endDate": "",
+      "jobTitle": "",
+      "startDate": ""
+    }
+  ]
 }
 
 Resume text:"""
@@ -33,6 +72,48 @@ Resume text:"""
         # Set up logger
         logging.basicConfig(filename='logs/parser.log', level=logging.DEBUG)
         self.logger = logging.getLogger()
+
+    def validate_and_format_contact(self, contact_no: str) -> str:
+        """
+        Validate and format contact number according to constraints:
+        - Must be exactly 10 digits after processing
+        - If 11 digits starting with 0, remove the leading 0
+        - No spaces allowed
+        - Return as string type
+        """
+        if not contact_no:
+            return ""
+        
+        # Remove all non-digit characters
+        digits_only = re.sub(r'\D', '', str(contact_no))
+        
+        # Check if exactly 10 digits
+        if len(digits_only) == 10:
+            return digits_only
+        # Check if 11 digits starting with 0
+        elif len(digits_only) == 11 and digits_only.startswith('0'):
+            # Remove leading 0 and return the remaining 10 digits
+            return digits_only[1:]
+        else:
+            # If not valid format, return empty string
+            self.logger.warning(f"Invalid contact number format: {contact_no} (digits: {len(digits_only)})")
+            return ""
+
+    def validate_and_set_defaults(self, resume_data: dict) -> dict:
+        """
+        Apply validation and default values according to constraints.
+        """
+        # Validate contact number
+        resume_data["contactno"] = self.validate_and_format_contact(resume_data.get("contactno", ""))
+        
+        # Set default values for city and country if empty
+        if not resume_data.get("city") or resume_data.get("city").strip() == "":
+            resume_data["city"] = "-"
+        
+        if not resume_data.get("country") or resume_data.get("country").strip() == "":
+            resume_data["country"] = "-"
+        
+        return resume_data
 
     def pdf2string_optimized(self, pdf_path: str) -> str:
         """
@@ -80,7 +161,7 @@ Resume text:"""
 
         # Use optimized parameters for faster response
         messages = [
-            {"role": "system", "content": "You are a fast, accurate resume parser. Return only valid JSON."},
+            {"role": "system", "content": "You are a fast, accurate resume parser. Return only valid JSON with the exact structure provided. Use YYYY-MM-DD format for dates."},
             {"role": "user", "content": prompt}
         ]
         
@@ -107,7 +188,8 @@ Resume text:"""
         # Define sections to prioritize
         important_sections = [
             'education', 'experience', 'work', 'employment', 'projects', 
-            'skills', 'contact', 'email', 'phone', 'address'
+            'skills', 'contact', 'email', 'phone', 'address', 'certificates',
+            'certifications', 'extracurricular', 'activities', 'volunteer'
         ]
         
         lines = text.split('\n')
@@ -140,7 +222,7 @@ Resume text:"""
 
     def query_resume_fast(self, pdf_path: str) -> dict:
         """
-        Optimized resume parsing with multiple speed improvements.
+        Optimized resume parsing with multiple speed improvements and new JSON structure.
         """
         try:
             # Step 1: Fast PDF extraction
@@ -177,22 +259,41 @@ Resume text:"""
                 
                 resume = json.loads(response_text)
                 
-                # Validate basic structure
-                if 'basic_info' not in resume:
-                    resume['basic_info'] = {}
-                if 'work_experience' not in resume:
-                    resume['work_experience'] = []
-                if 'project_experience' not in resume:
-                    resume['project_experience'] = []
+                # Validate and ensure new structure
+                # Ensure main profile fields exist
+                profile_fields = ["firstname", "lastname", "email", "contactno", "country", "city"]
+                for field in profile_fields:
+                    if field not in resume:
+                        resume[field] = ""
+                
+                # Ensure array fields exist
+                if 'certificates' not in resume:
+                    resume['certificates'] = []
+                if 'education' not in resume:
+                    resume['education'] = []
+                if 'extracurriculars' not in resume:
+                    resume['extracurriculars'] = []
+                if 'jobs' not in resume:
+                    resume['jobs'] = []
+                
+                # Apply validation and constraints
+                resume = self.validate_and_set_defaults(resume)
                     
             except json.JSONDecodeError as e:
                 self.logger.error(f"Failed to parse JSON: {str(e)}")
                 self.logger.error(f"Response text: {response_text}")
-                # Return minimal structure on parse error
+                # Return minimal structure on parse error with constraints applied
                 resume = {
-                    "basic_info": {},
-                    "work_experience": [],
-                    "project_experience": []
+                    "firstname": "",
+                    "lastname": "",
+                    "email": "",
+                    "contactno": "",
+                    "country": "-",  # Default value
+                    "city": "-",     # Default value
+                    "certificates": [],
+                    "education": [],
+                    "extracurriculars": [],
+                    "jobs": []
                 }
             
             return resume
@@ -200,9 +301,16 @@ Resume text:"""
         except Exception as e:
             self.logger.error(f"Error in query_resume_fast: {str(e)}")
             return {
-                "basic_info": {},
-                "work_experience": [],
-                "project_experience": [],
+                "firstname": "",
+                "lastname": "",
+                "email": "",
+                "contactno": "",
+                "country": "-",  # Default value
+                "city": "-",     # Default value
+                "certificates": [],
+                "education": [],
+                "extracurriculars": [],
+                "jobs": [],
                 "error": str(e)
             }
 
